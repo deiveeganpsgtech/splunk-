@@ -1,0 +1,181 @@
+index="ibs_firewall" sourcetype="cisco:asa" direction=inbound 
+| lookup Botnet Botnet_ip AS src_ip 
+| search Name=* 
+| table  _time,Country, src_ip,src_zone, dest, dest_zone,  dest_port, action, direction, host, protocol,acl, duration, user, bytes, file_name
+
+index="ibs_firewall" sourcetype="cisco:asa" direction=inbound 
+| lookup Botnet Botnet_ip AS src_ip 
+| search Name=* 
+| table  _time,Country, src_ip,src_zone, dest, dest_zone,  dest_port, action, direction, host, protocol,acl, duration, user, bytes, file_name
+
+index="ibs_firewall" sourcetype="cisco:asa" direction=inbound 
+| lookup Botnet Botnet_ip AS src_ip 
+| search Name=* 
+| table  _time,Country, src_ip,src_zone, dest, dest_zone,  dest_port, action, direction, host, protocol,acl, duration, user, bytes, file_name
+
+index="ibs_firewall" sourcetype="cisco:asa" host=* direction=inbound | lookup Malicious_IP IP_list AS src_ip| search Name=* | stats count by src_ip _time src_zone dest_zone direction  dest_ip dest_port host action  src_port
+
+index="ibs_firewall" sourcetype="cisco:asa" host=* direction=outbound | lookup Malicious_IP IP_list AS dest_ip| search Name=* | stats count by src_ip _time src_zone dest_zone direction  dest_ip dest_port host action  src_port
+
+index="ibs_firewall" sourcetype="cisco:asa" host=* action=teardown direction=inbound  | lookup Malicious_IP IP_list AS src_ip| search Name=* | stats count by src_ip _time src_zone dest_zone direction  dest_ip dest_port host action  src_port
+
+index="ibs_firewall" sourcetype="cisco:asa" host=* direction=inbound | lookup Tor_latest Tor_IP AS src_ip| search Name=* | stats count by src_ip _time src_zone dest_zone direction  dest_ip dest_port host action  src_port
+
+index="ibs_firewall" sourcetype="cisco:asa" action=teardown | lookup Malicious_Ports Ports AS dest_port | search Name=* | stats count by dest_port src_ip _time src_zone dest_zone dest_ip host action src_port duration transport bytes
+
+index="ibs_firewall" sourcetype="cisco:asa" host=* direction=inbound | lookup Malware_ioc IP AS src_ip| search Name=* | stats count by src_ip _time src_zone dest_zone direction  dest_ip dest_port host action  src_port vendor_class
+
+index="ibs_firewall"  (dest_port=445 OR dest_port=139) sourcetype="cisco:asa" transport!=icmp (src_ip=10.* OR src_ip=192.168.* OR src_ip=172.16.0.0/12) (dest_ip=10.* OR dest_ip=192.168.* OR dest_ip=172.16.0.0/12) 
+| bin _time span=1h 
+| stats values(src_zone) AS src_zone , values(dest_zone) AS dest_zone values(direction) AS direction count by _time src_ip, dest_ip, dest_port,transport, action,sourcetype 
+| where count>100
+
+index=* sourcetype="cisco:asa" src_port>1024 
+| bin span=1h _time 
+| stats values(vendor_class) AS vendor_class dc(src_port) as spcount dc(dest_port) as port_count count by _time, src, dest 
+| where port_count>1000
+
+index="ibs_firewall"  (dest_port=445 OR dest_port=139) sourcetype="cisco:asa" transport!=icmp (src_ip=10.* OR src_ip=192.168.* OR src_ip=172.16.0.0/12) (dest_ip=10.* OR dest_ip=192.168.* OR dest_ip=172.16.0.0/12) 
+| bin _time span=1h 
+| stats values(src_zone) AS src_zone , values(dest_zone) AS dest_zone values(direction) AS direction count by _time src_ip, dest_ip, dest_port,transport, action,sourcetype 
+| where count>100
+
+index="ibs_firewall" sourcetype="cisco:asa" src_port>1024 
+| bin span=1h _time 
+| stats values(vendor_class) AS vendor_class dc(src_port) as spcount dc(dest_port) as port_count count by _time, src, dest 
+| where port_count>1000
+
+index="ibs_firewall" sourcetype="cisco:asa" direction=* | lookup Malicious_Ports Ports as src_port  | search Name=*  | table  _time,src_zone,  dest_zone, action, direction, host,  src_ip, dest_ip, dest_port, src_port, Name
+
+index="ibs_firewall"sourcetype="cisco:asa"  (dest_port=445 OR dest_port=139)  transport!=icmp (src_ip !=10.* OR src_ip !=192.168.* OR src_ip !=172.16.0.0/12) (dest_ip !=10.* OR dest_ip !=192.168.* OR dest_ip !=172.16.0.0/12) 
+| stats values(src_zone) AS src_zone , values(dest_zone) AS dest_zone values(direction) AS direction count by _time src_ip, dest_ip, dest_port,transport, action,sourcetype 
+| where count>100
+
+index="ibs_firewall" sourcetype="cisco:asa" "10.104.0.25"  | table  _time,src_zone,  dest_zone, action, direction, host,  src_ip, dest_ip, dest_port, src_port
+
+
+
+index="ibs_firewall" sourcetype="cisco:asa" (src_ip=10.0.0.0/8 OR src_ip=172.16.0.0/12 OR src_ip=192.168.0.0/16)  AND (dest_port=80 OR dest_port=443) NOT (dest_ip=10.0.0.0/8 OR dest_ip=172.16.0.0/12 OR dest_ip=192.168.0.0/16)
+| bucket _time span=1h
+| stats sum(bytes*) as bytes* by user _time src_ip
+
+
+| eventstats max(_time) as maxtime avg(bytes_out) as avg_bytes_out stdev(bytes_out) as stdev_bytes_out | eventstats count as num_data_samples avg(eval(if(_time < relative_time(maxtime, "@h"),bytes_out,null))) as per_source_avg_bytes_out stdev(eval(if(_time < relative_time(maxtime, "@h"),bytes_out,null))) as per_source_stdev_bytes_out by src_ip  
+| where num_data_samples >=4 AND bytes_out > avg_bytes_out + 3 * stdev_bytes_out AND bytes_out > per_source_avg_bytes_out + 3 * per_source_stdev_bytes_out AND _time >= relative_time(maxtime, "@h")
+| eval num_standard_deviations_away_from_org_average = round(abs(bytes_out - avg_bytes_out) / stdev_bytes_out,2), num_standard_deviations_away_from_per_source_average = round(abs(bytes_out - per_source_avg_bytes_out) / per_source_stdev_bytes_out,2)
+| fields - maxtime per_source* avg* stdev*
+
+
+index="ibs_firewall" sourcetype="cisco:asa" (src_ip=10.0.0.0/8 OR src_ip=172.16.0.0/12 OR src_ip=192.168.0.0/16)  NOT (dest_ip=10.0.0.0/8 OR dest_ip=172.16.0.0/12 OR dest_ip=192.168.0.0/16)
+| eval s_MB= round(bytes/1024/1024, 2) 
+| search s_MB >= 1 
+| stats sum(s_MB) as bytes_in_MB values(action) values(dest_ip) values(src_zone) values(dest_zone) values(direction) values(host) values(dest_port) values(source_port) by _time src_ip
+
+
+
+index="ibs_firewall" sourcetype="cisco:asa" NOT  (src_ip=10.0.0.0/8 OR src_ip=172.16.0.0/12 OR src_ip=192.168.0.0/16)
+| lookup Malicious_Ports Ports as dest_port 
+| search Name=* 
+| table _time,src_zone, dest_zone, action, direction, host, src_ip, dest_ip, dest_port, src_port, Name
+
+
+	 
+| table _time action app:able_to_transfer_file app app:category app:has_known_vulnerability app:subcategory app:technology app:used_by_malware application client_ip client_location src_zone dest_zone src_ip dest_ip src_port dest_port  direction file_name log_type log_subtype severity signature threat threat_category threat_name
+
+209.141.47.35
+
+scp -r T-2789@192.168.184.138:/data/files/ files
+
+index="ibs_firewall" sourcetype="cisco:asa"  NOT dest_port=53
+| lookup Malicious_Ports Ports AS dest_port 
+| search Name=* 
+| table  src_ip dest_ip _time src_zone dest_zone  host action  duration transport bytes  src_port dest_port Name
+
+
+index=ibs_firewall sourcetype="cisco_wsa" *.ru | table _time, host,  client_ip, HTTP_request_method, Authenticated_username, first_line_of_request, page_url, server_code_and_Data_src, Response_body, transaction_result_code
+
+
+index="ibs_firewall" sourcetype="pan*" sourcetype="pan:threat" severity=critical | _time action used_by_malware direction src_ip src_port dest_ip dest_port application category src_zone dest_zone severity signature threat threat_category threat:name user url
+
+index="main"  host=SFTP | lookup Event_ID Event_ID AS EventCode | search Name=* |table  _time Application_Name ComputerName Destination_Address Destination_Port Direction host source Source_Address Source_Port SourceName TaskCategory Type Message EventCode Name
+
+index="ibs_firewall" sourcetype="pan:traffic" action!="blocked" | lookup Malicious_IP IP_list AS src_ip| search Name=* | table  _time src_ip dest_ip action  src_zone dest_zone direction src_port  dest_port host app:technology app:used_by_malware bytes_in bytes_out client_ip client_location packets_in packets_out server_ip signature vendor vendor_product
+
+index="ibs_firewall" sourcetype="pan:traffic" 185.220.100.253 | table  _time src_ip dest_ip action  src_zone dest_zone direction src_port  dest_port host app:technology app:used_by_malware bytes_in bytes_out client_ip client_location packets_in packets_out server_ip signature vendor vendor_product
+
+index="ibs_firewall" sourcetype="pan:traffic"  dest_port=139 OR dest_port=445 src_ip=10.0.0.0/8 OR src_ip=172.16.0.0/12 OR src_ip=192.168.0.0/16  NOT(dest_ip=10.0.0.0/8 OR dest_ip=172.16.0.0/12 OR dest_ip=192.168.0.0/16 ) | table  _time src_ip dest_ip action src_zone dest_zone direction src_port dest_port host app:technology app:used_by_malware bytes_in bytes_out client_ip client_location packets_in packets_out server_ip signature vendor vendor_product
+
+index="ibs_firewall" sourcetype="pan:traffic"  dest_port=139 OR dest_port=445 NOT(src_ip=10.0.0.0/8 OR src_ip=172.16.0.0/12 OR src_ip=192.168.0.0/16)  (dest_ip=10.0.0.0/8 OR dest_ip=172.16.0.0/12 OR dest_ip=192.168.0.0/16 ) | table  _time src_ip dest_ip action src_zone dest_zone direction src_port dest_port host app:technology app:used_by_malware bytes_in bytes_out client_ip client_location packets_in packets_out server_ip signature vendor vendor_product
+
+index="ibs_firewall" sourcetype="pan:traffic"  dest_port=139 OR dest_port=445 (src_ip=10.0.0.0/8 OR src_ip=172.16.0.0/12 OR src_ip=192.168.0.0/16)  (dest_ip=10.0.0.0/8 OR dest_ip=172.16.0.0/12 OR dest_ip=192.168.0.0/16 ) | table  _time src_ip dest_ip action src_zone dest_zone direction src_port dest_port host app:technology app:used_by_malware bytes_in bytes_out client_ip client_location packets_in packets_out server_ip signature vendor vendor_product
+
+index="ibs_firewall" sourcetype="pan:traffic"  dest_port=139 OR dest_port=445 (src_ip=10.0.0.0/8 OR src_ip=172.16.0.0/12 OR src_ip=192.168.0.0/16)  (dest_ip=10.0.0.0/8 OR dest_ip=172.16.0.0/12 OR dest_ip=192.168.0.0/16 ) | table  _time src_ip dest_ip action src_zone dest_zone direction src_port dest_port host app:technology app:used_by_malware bytes_in bytes_out client_ip client_location packets_in packets_out server_ip signature vendor vendor_product
+
+(index=trafficlogs 
+
+| stats dc(dest_port) as dc_dest_port by src, dest
+
+| where dc_dest_port > 10
+
+horizontal:
+
+index=trafficlogs
+
+| stats dc(dest) as dc_dest by src, dest_port
+
+| where dc_dest > 10
+
+10 is threshold here.)
+
+index=_internal metrics kb group=per_sourcetype_thruput 
+| eval sizeMB = round(kb/1024,2) 
+| stats sum(sizeMB) by series 
+| sort -sum(sizeMB) 
+| rename sum(sizeMB) AS "Size on Disk (MB)"
+
+
+Symentec_AV
+
+bin span of 1 day
+
+http://10.163.128.25:8000/en-US/app/search/search?sid=1629191588.4794
+
+| table _time, ComputerName, Source_Address, TaskCategory, Type, Message, Source_Network_Address, Account_Domain, Account_Name, Logon_Type, Status, Logon_Process, Caller_Process_Name, Failure_Reason
+
+find / -name splunkd
+
+cd /opt/splunk/etc/system/default
+server.conf 
+disk usage processor settings
+
+
+
+
+
+SMB other than ICMP:
+
+index="ibs_firewall" sourcetype="cisco:asa" (dest_port=445 OR dest_port=139) transport!=icmp (src_ip=10.* OR src_ip=192.168.* OR src_ip=172.16.0.0/12) (dest_ip=10.* OR dest_ip=192.168.* OR dest_ip=172.16.0.0/12) 
+| bin _time span=1h 
+| stats values(src_zone) AS src_zone , values(dest_zone) AS dest_zone values(direction) AS direction count by _time src_ip, dest_ip, dest_port,transport, action,sourcetype 
+| where count>100
+
+
+
+
+index="ibs_firewall" sourcetype="cisco:asa" 
+| stats dc(dest_port) as num_dest_port dc(dest_ip) as num_dest_ip by src_ip 
+| where num_dest_port > 50 AND num_dest_ip > 50
+	
+
+index="ibs_firewall"  | table  _time, src_ip,src_zone, dest, dest_zone,  dest_port, action, direction, host, protocol,acl, duration, user, bytes
+
+index="ibs_firewall" sourcetype="cisco:asa" message_id="303002"| table  _time, src_ip,src_zone, dest, dest_zone,  dest_port, action, direction, host, protocol,acl, duration, user, bytes, file_name
+
+
+
+
+index="ibs_firewall" sourcetype="cisco:asa" message_id="303002" | lookup TorIP Tor_IP AS src_ip| table  _time, src_ip,src_zone, dest, dest_zone,  dest_port, action, direction, host, protocol,acl, duration, user, bytes, file_name | stats count by src_ip
+
+index="ibs_firewall" sourcetype="cisco:asa" direction=outbound | lookup Tor ?Tor_IP AS src_ip| search Name=* | table  _time,Country, src_ip,src_zone, dest, dest_zone,  dest_port, action, direction, host, protocol,acl, duration, user, bytes, file_name
+
+
